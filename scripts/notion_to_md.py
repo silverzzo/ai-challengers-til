@@ -324,7 +324,7 @@ def collect_entries():
                 "path": md_file.relative_to(REPO_ROOT).as_posix(),
             }
         )
-    entries.sort(key=lambda e: e["date"], reverse=True)
+    entries.sort(key=lambda e: e["date"])  # 오름차순: 14일 -> 15일 -> 16일 순
     return entries
 
 
