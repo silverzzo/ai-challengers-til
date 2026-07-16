@@ -1,6 +1,8 @@
 # TIL (Today I Learned)
 
-> ESTsoft AI Challengers Bootcamp에서 작성한 TIL 아카이브입니다.
 > Notion에 작성한 TIL이 매일 자동으로 정리됩니다.
 
+## 2026년 7월 (2)
 
+- `2026-07-15` [CH03 (자료 구조)](TIL/2026/07/2026-07-15-CH03-자료-구조.md)
+- `2026-07-14` [CH02 (기초 문법)](TIL/2026/07/2026-07-14-CH02-기초-문법.md)
