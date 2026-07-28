@@ -42,7 +42,7 @@ HEADERS = {
 # Notion API
 # ---------------------------------------------------------------------------
 
-def get_target_date():
+def get_yesterday_kst():
     """이 스크립트는 KST 00:05 에 실행되므로, '어제'는 방금 끝난 하루를 의미한다."""
     now_kst = datetime.now(KST)
     return (now_kst - timedelta(days=1)).date()
@@ -56,6 +56,22 @@ def query_database(target_date):
             "date": {"equals": target_date.isoformat()},
         }
     }
+    pages = []
+    while True:
+        res = requests.post(url, headers=HEADERS, json=payload, timeout=30)
+        res.raise_for_status()
+        data = res.json()
+        pages.extend(data["results"])
+        if not data.get("has_more"):
+            break
+        payload["start_cursor"] = data["next_cursor"]
+    return pages
+
+
+def query_database_all():
+    """필터 없이 데이터베이스의 모든 페이지를 가져온다 (수동 전체 재동기화용)."""
+    url = f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query"
+    payload = {"page_size": 100}
     pages = []
     while True:
         res = requests.post(url, headers=HEADERS, json=payload, timeout=30)
@@ -235,6 +251,16 @@ def get_title(page):
     return "제목 없음"
 
 
+def get_page_date(page):
+    prop = page["properties"].get(DATE_PROPERTY)
+    if not prop or prop.get("type") != "date":
+        return None
+    date_obj = prop.get("date")
+    if not date_obj or not date_obj.get("start"):
+        return None
+    return datetime.strptime(date_obj["start"][:10], "%Y-%m-%d").date()
+
+
 def get_tags(page):
     prop = page["properties"].get(TAGS_PROPERTY)
     if not prop or prop.get("type") != "multi_select":
@@ -255,14 +281,19 @@ def get_subject(page):
 # 페이지 저장
 # ---------------------------------------------------------------------------
 
-def process_page(page, target_date):
+def process_page(page):
     title = get_title(page)
+    page_date = get_page_date(page)
+    if not page_date:
+        print(f"  건너뜀 (날짜 속성 없음): {title}")
+        return
+
     tags = get_tags(page)
     subject = get_subject(page)
     slug = slugify(title)
-    date_str = target_date.isoformat()
+    date_str = page_date.isoformat()
 
-    day_dir = TIL_DIR / f"{target_date.year:04d}" / f"{target_date.month:02d}"
+    day_dir = TIL_DIR / f"{page_date.year:04d}" / f"{page_date.month:02d}"
     day_dir.mkdir(parents=True, exist_ok=True)
 
     filepath = day_dir / f"{date_str}-{slug}.md"
@@ -376,17 +407,28 @@ def generate_readme():
 # ---------------------------------------------------------------------------
 
 def main():
-    target_date = get_target_date()
-    print(f"대상 날짜(KST): {target_date.isoformat()}")
+    event_name = os.environ.get("GITHUB_EVENT_NAME", "")
+    override_date = os.environ.get("TARGET_DATE", "").strip()
 
-    pages = query_database(target_date)
+    if override_date:
+        target_date = datetime.strptime(override_date, "%Y-%m-%d").date()
+        print(f"지정 날짜로 재동기화: {target_date.isoformat()}")
+        pages = query_database(target_date)
+    elif event_name == "workflow_dispatch":
+        print("수동 실행: 데이터베이스 전체를 다시 동기화합니다.")
+        pages = query_database_all()
+    else:
+        target_date = get_yesterday_kst()
+        print(f"자동 실행 대상 날짜(KST): {target_date.isoformat()}")
+        pages = query_database(target_date)
+
     print(f"가져온 글 개수: {len(pages)}")
 
     if not pages:
-        print("해당 날짜에 작성된 글이 없습니다. README만 갱신합니다.")
+        print("가져올 글이 없습니다. README만 갱신합니다.")
 
     for page in pages:
-        process_page(page, target_date)
+        process_page(page)
 
     generate_readme()
 
